@@ -4,6 +4,8 @@ const socket = io()
 
 socket.on('connect', () => console.log(`Socket connected: ${socket.id}`))
 socket.on('disconnect', () => console.log(`Socket disconnected: ${socket.id}`))
+socket.on('error', console.error)
+socket.on('new game', game => drawBoard(game.board))
 
 const boardState = [
   ['','',''],
@@ -80,8 +82,6 @@ const winner = b => {
   }
 }
 
-drawBoard(boardState)
-
 board.addEventListener('click', evt => {
   const col = evt.target.cellIndex
   const row = evt.target.closest('tr').rowIndex
@@ -96,7 +96,6 @@ board.addEventListener('click', evt => {
 
   boardState[row][col] = nextPlayer
   drawBoard(boardState)
-  console.log('Current game state:', board)
 
   if (winner(boardState)) {
     return status.innerText = `${nextPlayer} WON!`
