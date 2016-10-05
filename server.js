@@ -27,15 +27,16 @@ const Game = mongoose.model('game', {
   board: [
     [String, String, String],
     [String, String, String],
-    [String, String, String]
+    [String, String, String],
   ],
-  toMove: String
+  toMove: String,
+  result: String,
 })
 
 io.on('connect', socket => {
   Game.create({
-    board: [['', '', ''], ['', '', ''], ['', '', '']],
-    toMove: 'X'
+    board: [['','',''],['','',''],['','','']],
+    toMove: 'X',
   })
   .then(g => {
     socket.game = g
@@ -46,14 +47,95 @@ io.on('connect', socket => {
     console.error(err)
   })
 
-  socket.on('make move', ({ row, col }) => {
-    socket.game.board[row][col] = socket.game.toMove
-    socket.game.toMove = socket.game.toMove === 'X' ? 'O' : 'X'
-    socket.game.markModified('board') // markModified is a mongoose method to trigger change detection
-    socket.game.save()
-    .then(g => socket.emit('move made', g))
-  })
-
   console.log(`Socket connected: ${socket.id}`)
+
+  socket.on('make move', move => makeMove(move, socket))
   socket.on('disconnect', () => console.log(`Socket disconnected: ${socket.id}`))
 })
+
+const makeMove = (move, socket) => {
+    if (isFinished(socket.game) || !isSpaceAvailable(socket.game, move)) {
+      return
+    }
+
+    setMove(socket.game, move)
+      .then(toggleNextMove)
+      .then(setResult)
+      .then(g => g.save())
+      .then(g => socket.emit('move made', g))
+}
+const isFinished = game => !!game.result
+const isSpaceAvailable = (game, move) => !game.board[move.row][move.col]
+const setMove = (game, move) => {
+  game.board[move.row][move.col] = game.toMove
+  game.markModified('board') // trigger mongoose change detection
+
+  return Promise.resolve(game)
+}
+const toggleNextMove = game => {
+  game.toMove = game.toMove === 'X' ? 'O' : 'X'
+  return game
+}
+const setResult = game => {
+  const result = winner(game.board)
+
+  if (result) {
+    game.toMove = undefined // mongoose equivalent to: `delete socket.game.toMove`
+    game.result = result
+  }
+
+  return game
+}
+
+const winner = b => {
+  // Rows
+  if (b[0][0] && b[0][0] === b[0][1] && b[0][1] === b[0][2]) {
+    return b[0][0]
+  }
+
+  if (b[1][0] && b[1][0] === b[1][1] && b[1][1] === b[1][2]) {
+    return b[1][0]
+  }
+
+  if (b[2][0] && b[2][0] === b[2][1] && b[2][1] === b[2][2]) {
+    return b[2][0]
+  }
+
+  // Cols
+  if (b[0][0] && b[0][0] === b[1][0] && b[1][0] === b[2][0]) {
+    return b[0][0]
+  }
+
+  if (b[0][1] && b[0][1] === b[1][1] && b[1][1] === b[2][1]) {
+    return b[0][1]
+  }
+
+  if (b[0][2] && b[0][2] === b[1][2] && b[1][2] === b[2][2]) {
+    return b[0][2]
+  }
+
+  // Diags
+  if (b[0][0] && b[0][0] === b[1][1] && b[1][1] === b[2][2]) {
+    return b[0][0]
+  }
+
+  if (b[0][2] && b[0][2] === b[1][1] && b[1][1] === b[2][0]) {
+    return b[0][2]
+  }
+
+  if (!movesRemaining(b)) {
+    return 'Tie'
+  }
+
+    // In-Progress
+    return null
+}
+
+const movesRemaining = (board) => {
+  const POSSIBLE_MOVES = 9
+  const movesMade = flatten(board).join('').length
+
+  return POSSIBLE_MOVES - movesMade
+}
+
+const flatten = arr => arr.reduce((a, b) => a.concat(b))
