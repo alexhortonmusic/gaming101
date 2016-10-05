@@ -7,13 +7,13 @@ const status = document.querySelector('.status')
 
 const renderStatus = game => {
   if (game.result === 'Tie') {
-    return status.innerText = "It's a tieeeeeee"
+    return status.innerText = "It's a tie!"
   }
 
   if (game.result) {
     return status.innerText = `${game.result} WON!`
   }
-  
+
   status.innerText = `${game.toMove}'s Turn`
 }
 
@@ -49,6 +49,7 @@ board.addEventListener('click', evt => {
 })
 
 const render = game => {
+  console.log('RENDER', game)
   renderStatus(game)
   renderBoard(game)
 }
