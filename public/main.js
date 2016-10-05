@@ -1,43 +1,48 @@
-'use strict';
+'use strict'
 
 const socket = io()
 
-socket.on('connect', () => console.log(`Socket connected: ${socket.id}`))
-socket.on('disconnect', () => console.log(`Socket disconnected: ${socket.id}`))
-socket.on('error', console.error)
-socket.on('new game', game => drawBoard(game.board))
+const board = document.querySelector('.board')
+const status = document.querySelector('.status')
 
 const boardState = [
   ['','',''],
   ['','',''],
-  ['','','']
+  ['','',''],
 ]
 
-const board = document.querySelector('.board')
-const status = document.querySelector('.status')
 let nextPlayer = 'X'
 
-const drawBoard = (boardState) => {
-  document.querySelector('.board').innerHTML = `
+const renderStatus = game => {
+  const result = winner(game.board)
+
+  status.innerText = result
+  ? `${result} WON!`
+  : `${game.toMove}'s Turn`
+}
+
+const renderBoard = game => {
+  const b = game.board
+
+  board.innerHTML = `
     <table>
       <tr>
-        <td>${boardState[0][0]}</td>
-        <td>${boardState[0][1]}</td>
-        <td>${boardState[0][2]}</td>
+        <td>${b[0][0]}</td>
+        <td>${b[0][1]}</td>
+        <td>${b[0][2]}</td>
       </tr>
       <tr>
-        <td>${boardState[1][0]}</td>
-        <td>${boardState[1][1]}</td>
-        <td>${boardState[1][2]}</td>
+        <td>${b[1][0]}</td>
+        <td>${b[1][1]}</td>
+        <td>${b[1][2]}</td>
       </tr>
       <tr>
-        <td>${boardState[2][0]}</td>
-        <td>${boardState[2][1]}</td>
-        <td>${boardState[2][2]}</td>
+        <td>${b[2][0]}</td>
+        <td>${b[2][1]}</td>
+        <td>${b[2][2]}</td>
       </tr>
     </table>
   `
-  status.innerText = `${nextPlayer}'s turn`
 }
 
 const winner = b => {
@@ -94,14 +99,21 @@ board.addEventListener('click', evt => {
     return console.log('Game is over!')
   }
 
+  socket.emit('make move', { row, col })
+
   boardState[row][col] = nextPlayer
-  drawBoard(boardState)
-
-  if (winner(boardState)) {
-    return status.innerText = `${nextPlayer} WON!`
-  }
-
+  console.log('Current game state:', board)
 
   nextPlayer = nextPlayer === 'X' ? 'O' : 'X'
-  status.innerText = `${nextPlayer}'s Turn`
 })
+
+const render = game => {
+  renderStatus(game)
+  renderBoard(game)
+}
+
+socket.on('connect', () => console.log(`Socket connected: ${socket.id}`))
+socket.on('disconnect', () => console.log('Socket disconnected'))
+socket.on('error', console.error)
+socket.on('new game', render)
+socket.on('move made', render)
