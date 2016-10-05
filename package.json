@@ -1,0 +1,26 @@
+{
+  "name": "gaming101",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alexhortonmusic/gaming101.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/alexhortonmusic/gaming101/issues"
+  },
+  "homepage": "https://github.com/alexhortonmusic/gaming101#readme",
+  "dependencies": {
+    "express": "^4.14.0",
+    "mongoose": "^4.6.2",
+    "pug": "^2.0.0-beta6",
+    "socket.io": "^1.4.8"
+  }
+}
