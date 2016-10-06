@@ -16,19 +16,16 @@ app.set('view engine', 'pug')
 
 app.use(express.static('public'))
 
-app.get('/', (req, res) => res.render('home'))
-
-app.get('/game', (req, res) =>
-  Game.find().then(games => res.render('index', { games }))
+app.get('/', (req, res) =>
+  Game.find()
+  .or([{ player1: { $exists: false } }, { player2: { $exists: false } }])
+  .exists('result', false)
+  .then(games => res.render('home', { games }))
 )
 
-app.get('/game/create', (req, res) => {
-  Game.create({
-    board: [['','',''],['','',''],['','','']],
-    toMove: 'X',
-  })
-  .then(game => res.redirect(`/game/${game._id}`))
-})
+app.get('/game/create', (req, res) =>
+  Game.create({}).then(game => res.redirect(`/game/${game._id}`))
+)
 
 app.get('/game/:id', (req, res) => {
   res.render('game')
@@ -40,23 +37,34 @@ mongoose.connect(MONGODB_URL, () => {
 })
 
 const Game = mongoose.model('game', {
-  board: [
-    [String, String, String],
-    [String, String, String],
-    [String, String, String],
-  ],
-  toMove: String,
+  board: {
+    type: [
+      [String, String, String],
+      [String, String, String],
+      [String, String, String],
+    ],
+    default: [
+      ['','',''],
+      ['','',''],
+      ['','',''],
+    ],
+  },
   result: String,
+  toMove: String,
+  player1: String,
+  player2: String,
 })
 
 io.on('connect', socket => {
   const id = socket.handshake.headers.referer.split('/').slice(-1)[0]
 
   Game.findById(id)
+  .then(g => attemptToJoinGameAsPlayer(g, socket))
+  .then(g => g.save())
   .then(g => {
     socket.join(g._id)
-    socket.game = g
-    socket.emit('new game', g)
+    socket.gameId = g._id
+    io.to(g._id).emit('player joined', g)
   })
   .catch(err => {
     socket.emit('error', err)
@@ -66,35 +74,77 @@ io.on('connect', socket => {
   console.log(`Socket connected: ${socket.id}`)
 
   socket.on('make move', move => makeMove(move, socket))
-  socket.on('disconnect', () => console.log(`Socket disconnected: ${socket.id}`))
+  socket.on('disconnect', () => handleDisconnect(socket))
 })
 
-const makeMove = (move, socket) => {
-    Game.findByID(socket.gameId)
-      .then(game => {
-        if (isFinished(socket.game) || !isSpaceAvailable(socket.game, move)) {
-          return
-        }
-      })
-
-    Promise.resolve()
-      .then(() => setMove(socket.game, move))
-      .then(toggleNextMove)
-      .then(setResult)
-      .then(g => g.save())
-      .then(g => io.to(socket.game._id).emit('move made', g))
-      .catch(console.error)
+const handleDisconnect = socket => {
+  Game
+    .findById(socket.gameId)
+    .then(game => {
+      if (!game.result && (socket.id === game.player1 || socket.id === game.player2)) {
+        console.log('yes')
+        game.toMove = undefined
+        game.result = 'Disconnect'
+      }
+      return game.save()
+    })
+    .then(g => io.to(g._id).emit('player disconnected', g))
+    .catch(console.error)
 }
 
+const makeMove = (move, socket) => {
+  Game.findById(socket.gameId)
+    .then(game => {
+      if (isFinished(game) || !isSpaceAvailable(game, move) || !isPlayersTurn(game, socket)) {
+        return Promise.reject('Cannot move')
+      }
+      return game
+    })
+    .then(g => setMove(g, move))
+    .then(toggleNextMove)
+    .then(setResult)
+    .then(g => g.save())
+    .then(g => io.to(g._id).emit('move made', g))
+    .catch(console.error)
+}
+
+const attemptToJoinGameAsPlayer = (game, socket) => {
+  if (hasTwoPlayers(game)) {
+    return game
+  }
+
+  const playerNumber = randomPlayerNumber()
+
+  if (hasZeroPlayers(game)) {
+    game[`player${playerNumber}`] = socket.id
+  } else if (game.player1 && !game.player2) {
+    // player1 already connected and player2 is available
+    game.player2 = socket.id
+  } else if (!game.player1 && game.player2) {
+    // player2 already connected and player1 is available
+    game.player1 = socket.id
+  }
+
+  if (playerNumber === 1) {
+    game.toMove = socket.id
+  }
+
+  return game
+}
+const nextMoveToken = game => game.toMove === game.player1 ? 'X' : 'O'
+const isPlayersTurn = (game, socket) => game.toMove === socket.id
+const randomPlayerNumber = () => Math.round(Math.random()) + 1
+const hasZeroPlayers = game => !game.player1 && !game.player2
+const hasTwoPlayers = game => !!(game.player1 && game.player2)
 const isFinished = game => !!game.result
 const isSpaceAvailable = (game, move) => !game.board[move.row][move.col]
 const setMove = (game, move) => {
-  game.board[move.row][move.col] = game.toMove
+  game.board[move.row][move.col] = nextMoveToken(game)
   game.markModified('board') // trigger mongoose change detection
   return game
 }
 const toggleNextMove = game => {
-  game.toMove = game.toMove === 'X' ? 'O' : 'X'
+  game.toMove = game.toMove === game.player1 ? game.player2 : game.player1
   return game
 }
 const setResult = game => {
